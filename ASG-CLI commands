@@ -1,0 +1,64 @@
+Resource group and nsg creation
+------------
+RG=HUBRG
+az group create -l westus -n ${RG}
+az network nsg create -g ${RG} -n ${RG}_NSG1
+
+
+vnet and subnet creation
+-----------------------------
+
+az network vnet create -g  ${RG} -n  ${RG}-vnet1 --address-prefix 10.1.0.0/16 --subnet-name  ${RG}-subnet1 --subnet-prefix 10.1.1.0/24 -l  westus
+
+attach nsg to subnet
+--------------------------
+
+az network vnet subnet update --name ${RG}-subnet1 --vnet-name ${RG}-vnet1 --resource-group ${RG} --network-security-group ${RG}_NSG1
+
+
+create 2 more subnets under vnet 
+-----------------------------------
+az network vnet subnet create --name ${RG}-subnet2  --vnet-name ${RG}-vnet1 --resource-group ${RG} --address-prefix 10.1.2.0/24 --network-security-group ${RG}_NSG1
+az network vnet subnet create --name ${RG}-subnet3  --vnet-name ${RG}-vnet1 --resource-group ${RG} --address-prefix 10.1.3.0/24 --network-security-group ${RG}_NSG1
+
+
+now create application security-group
+--------------------------------------
+az network asg create -g ${RG} -n WEBASG
+az network asg create -g ${RG} -n APPASG
+az network asg create -g ${RG} -n DBASG
+
+
+
+vm creation in 3 subnets with Application security-groups
+-------------
+
+az vm create --resource-group  ${RG} --name WEBvm1 --image Ubuntu2204 --vnet-name  ${RG}-vnet1 --subnet  ${RG}-subnet1 --admin-username testuser --admin-password "India@123456" --size standard_B1ms --asgs WEBASG
+az vm create --resource-group  ${RG} --name WEBvm2 --image Ubuntu2204 --vnet-name  ${RG}-vnet1 --subnet  ${RG}-subnet1 --admin-username testuser --admin-password "India@123456" --size standard_B1ms  --asgs WEBASG
+
+
+az vm create --resource-group  ${RG} --name APPvm1 --image Ubuntu2204 --vnet-name  ${RG}-vnet1 --subnet  ${RG}-subnet2 --admin-username testuser --admin-password "India@123456" --size standard_B1ms --asgs APPASG
+az vm create --resource-group  ${RG} --name APPvm2 --image Ubuntu2204 --vnet-name  ${RG}-vnet1 --subnet  ${RG}-subnet2 --admin-username testuser --admin-password "India@123456" --size standard_B1ms  --asgs APPASG
+
+az vm create --resource-group  ${RG} --name DBvm1 --image Ubuntu2204 --vnet-name  ${RG}-vnet1 --subnet  ${RG}-subnet3 --admin-username testuser --admin-password "India@123456" --size Standard_D2s_v3 --asgs DBASG
+az vm create --resource-group  ${RG} --name DBvm1 --image Ubuntu2204 --vnet-name  ${RG}-vnet1 --subnet  ${RG}-subnet3 --admin-username testuser --admin-password "India@123456" --size standard_B1ms  --asgs DBASG
+
+az vm create --resource-group ${RG} --name DBvm1 --image Ubuntu2204 --vnet-name ${RG}-vnet1 --subnet ${RG}-subnet3 --admin-username testuser --admin-password "India@123456" --size Standard_D2s_v3 --public-ip-sku Basic --asgs DBASG
+
+Create nsg rules 
+-----------------
+
+az network nsg rule create -g ${RG} --nsg-name ${RG}_NSG1 -n ${RG}_NSG1_ALLOW_WEB --priority 120 \
+--source-address-prefix '*' --source-port-ranges '*' --destination-asgs WEBASG \
+--destination-port-ranges 22 80 --access Allow  --protocol TCP --description "Allow SSH/http traffic for now in web servers"
+
+
+
+az network nsg rule create -g ${RG} --nsg-name ${RG}_NSG1 -n ${RG}_NSG1_ALLOW_WEB_TO_APP --priority 130 \
+--source-asgs WEBASG --source-port-ranges '*' --destination-asgs APPASG \
+--destination-port-ranges 22 8080 --access Allow  --protocol TCP --description "Allow web to app servers traffic"
+
+
+az network nsg rule create -g ${RG} --nsg-name ${RG}_NSG1 -n ${RG}_NSG1_ALLOW_APP_TO_DB --priority 132 \
+--source-asgs APPASG --source-port-ranges '*' --destination-asgs DBASG \
+--destination-port-ranges 9000 3306 5364 --access Allow  --protocol TCP --description "Allow App to Db servers traffic"
